@@ -36,6 +36,9 @@ local Library = {
     OutlineColor = Color3.fromRGB(50, 50, 50);
     RiskColor = Color3.fromRGB(255, 50, 50),
     GlowColor = Color3.fromRGB(0, 40, 140);
+    GlowColor2 = Color3.fromRGB(70, 20, 150);
+    AccentColor2 = Color3.fromRGB(130, 70, 255);
+    White = Color3.new(1, 1, 1);
 
     Black = Color3.new(0, 0, 0);
     Font = Enum.Font.Code,
@@ -253,7 +256,7 @@ function Library:OnHighlight(HighlightInstance, Instance, Properties, Properties
         local Reg = Library.RegistryMap[Instance];
 
         for Property, ColorIdx in next, Properties do
-            Instance[Property] = Library[ColorIdx] or ColorIdx;
+            Library:SetProperty(Instance, Property, Library[ColorIdx] or ColorIdx);
 
             if Reg and Reg.Properties[Property] then
                 Reg.Properties[Property] = ColorIdx;
@@ -265,7 +268,7 @@ function Library:OnHighlight(HighlightInstance, Instance, Properties, Properties
         local Reg = Library.RegistryMap[Instance];
 
         for Property, ColorIdx in next, PropertiesDefault do
-            Instance[Property] = Library[ColorIdx] or ColorIdx;
+            Library:SetProperty(Instance, Property, Library[ColorIdx] or ColorIdx);
 
             if Reg and Reg.Properties[Property] then
                 Reg.Properties[Property] = ColorIdx;
@@ -316,6 +319,90 @@ function Library:GetDarkerColor(Color)
     return Color3.fromHSV(H, S, V / 1.5);
 end;
 Library.AccentColorDark = Library:GetDarkerColor(Library.AccentColor);
+
+function Library:GetAccentSequence()
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Library.AccentColor),
+        ColorSequenceKeypoint.new(1, Library.AccentColor2),
+    });
+end;
+
+function Library:GetLoopSequence()
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Library.AccentColor),
+        ColorSequenceKeypoint.new(0.5, Library.AccentColor2),
+        ColorSequenceKeypoint.new(1, Library.AccentColor),
+    });
+end;
+
+function Library:GetGlowSequence()
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Library.GlowColor),
+        ColorSequenceKeypoint.new(1, Library.GlowColor2),
+    });
+end;
+
+-- Der Frame braucht BackgroundColor3 = White, der Farbverlauf liefert die Farbe
+function Library:AddAccentGradient(Inst, Rotation)
+    local Gradient = Library:Create('UIGradient', {
+        Color = Library:GetAccentSequence();
+        Rotation = Rotation or 0;
+        Parent = Inst;
+    });
+
+    Library:AddToRegistry(Gradient, {
+        Color = function()
+            return Library:GetAccentSequence();
+        end;
+    });
+
+    return Gradient;
+end;
+
+-- Weicher Glow (Mode: 'Accent' oder 'Glow')
+function Library:AddGlow(Parent, Spread, Transparency, ZIndex, Mode)
+    local Glow = Library:Create('ImageLabel', {
+        Name = 'Glow';
+        BackgroundTransparency = 1;
+        Position = UDim2.new(0, -Spread, 0, -Spread);
+        Size = UDim2.new(1, Spread * 2, 1, Spread * 2);
+        Image = 'rbxassetid://5028857084';
+        ImageColor3 = Library.White;
+        ImageTransparency = Transparency or 0.5;
+        ScaleType = Enum.ScaleType.Slice;
+        SliceCenter = Rect.new(24, 24, 276, 276);
+        SliceScale = math.clamp(Spread / 24, 0.1, 1);
+        ZIndex = ZIndex or 1;
+        Parent = Parent;
+    });
+
+    local function GetSequence()
+        if Mode == 'Glow' then
+            return Library:GetGlowSequence();
+        end;
+
+        return Library:GetAccentSequence();
+    end;
+
+    local Gradient = Library:Create('UIGradient', {
+        Color = GetSequence();
+        Rotation = 45;
+        Parent = Glow;
+    });
+
+    Library:AddToRegistry(Gradient, { Color = GetSequence; });
+
+    return Glow;
+end;
+
+-- Farbuebergang statt hartem Wechsel (Hover-Effekte)
+function Library:SetProperty(Inst, Property, Value)
+    if typeof(Value) == 'Color3' then
+        TweenService:Create(Inst, TweenInfo.new(0.15, Enum.EasingStyle.Quad), { [Property] = Value }):Play();
+    else
+        Inst[Property] = Value;
+    end;
+end;
 
 function Library:AddToRegistry(Instance, Properties, IsHud)
     local Idx = #Library.Registry + 1;
@@ -443,6 +530,15 @@ do
             Parent = ToggleLabel;
         });
 
+        Library:Create('UIGradient', {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 185))
+            });
+            Rotation = 90;
+            Parent = DisplayFrame;
+        });
+
         -- Transparency image taken from https://github.com/matas3535/SplixPrivateDrawingLibrary/blob/main/Library.lua cus i'm lazy
         local CheckerFrame = Library:Create('ImageLabel', {
             BorderSizePixel = 0;
@@ -483,7 +579,7 @@ do
         });
 
         local Highlight = Library:Create('Frame', {
-            BackgroundColor3 = Library.AccentColor;
+            BackgroundColor3 = Library.White;
             BorderSizePixel = 0;
             Size = UDim2.new(1, 0, 0, 2);
             ZIndex = 17;
@@ -795,7 +891,7 @@ do
         end
 
         Library:AddToRegistry(PickerFrameInner, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor'; });
-        Library:AddToRegistry(Highlight, { BackgroundColor3 = 'AccentColor'; });
+        Library:AddAccentGradient(Highlight, 0);
         Library:AddToRegistry(SatVibMapInner, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor'; });
 
         Library:AddToRegistry(HueBoxInner, { BackgroundColor3 = 'MainColor'; BorderColor3 = 'OutlineColor'; });
@@ -1856,6 +1952,12 @@ do
             BorderColor3 = 'OutlineColor';
         });
 
+        local ToggleGradient = Library:AddAccentGradient(ToggleInner, 90);
+        ToggleGradient.Enabled = false;
+
+        local ToggleGlow = Library:AddGlow(ToggleOuter, 6, 0.55, 4);
+        ToggleGlow.Visible = false;
+
         local ToggleLabel = Library:CreateLabel({
             Size = UDim2.new(0, 216, 1, 0);
             Position = UDim2.new(1, 6, 0, 0);
@@ -1895,10 +1997,12 @@ do
         end
 
         function Toggle:Display()
-            ToggleInner.BackgroundColor3 = Toggle.Value and Library.AccentColor or Library.MainColor;
+            ToggleInner.BackgroundColor3 = Toggle.Value and Library.White or Library.MainColor;
             ToggleInner.BorderColor3 = Toggle.Value and Library.AccentColorDark or Library.OutlineColor;
+            ToggleGradient.Enabled = Toggle.Value;
+            ToggleGlow.Visible = Toggle.Value;
 
-            Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
+            Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'White' or 'MainColor';
             Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
         end;
 
@@ -2014,7 +2118,7 @@ do
         });
 
         local Fill = Library:Create('Frame', {
-            BackgroundColor3 = Library.AccentColor;
+            BackgroundColor3 = Library.White;
             BorderColor3 = Library.AccentColorDark;
             Size = UDim2.new(0, 0, 1, 0);
             ZIndex = 7;
@@ -2022,12 +2126,15 @@ do
         });
 
         Library:AddToRegistry(Fill, {
-            BackgroundColor3 = 'AccentColor';
+            BackgroundColor3 = 'White';
             BorderColor3 = 'AccentColorDark';
         });
 
+        Library:AddAccentGradient(Fill, 0);
+        local FillGlow = Library:AddGlow(Fill, 5, 0.6, 6);
+
         local HideBorderRight = Library:Create('Frame', {
-            BackgroundColor3 = Library.AccentColor;
+            BackgroundColor3 = Library.AccentColor2;
             BorderSizePixel = 0;
             Position = UDim2.new(1, 0, 0, 0);
             Size = UDim2.new(0, 1, 1, 0);
@@ -2036,7 +2143,7 @@ do
         });
 
         Library:AddToRegistry(HideBorderRight, {
-            BackgroundColor3 = 'AccentColor';
+            BackgroundColor3 = 'AccentColor2';
         });
 
         local DisplayLabel = Library:CreateLabel({
@@ -2057,7 +2164,6 @@ do
         end
 
         function Slider:UpdateColors()
-            Fill.BackgroundColor3 = Library.AccentColor;
             Fill.BorderColor3 = Library.AccentColorDark;
         end;
 
@@ -2076,6 +2182,7 @@ do
             Fill.Size = UDim2.new(0, X, 1, 0);
 
             HideBorderRight.Visible = not (X == Slider.MaxSize or X == 0);
+            FillGlow.Visible = X > 0;
         end;
 
         function Slider:OnChanged(Func)
@@ -2785,16 +2892,14 @@ do
     }, true);
 
     local ColorFrame = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
+        BackgroundColor3 = Library.White;
         BorderSizePixel = 0;
         Size = UDim2.new(1, 0, 0, 2);
         ZIndex = 102;
         Parent = KeybindInner;
     });
 
-    Library:AddToRegistry(ColorFrame, {
-        BackgroundColor3 = 'AccentColor';
-    }, true);
+    Library:AddAccentGradient(ColorFrame, 0);
 
     local KeybindLabel = Library:CreateLabel({
         Size = UDim2.new(1, 0, 0, 20);
@@ -2908,7 +3013,7 @@ function Library:Notify(Text, Time)
     });
 
     local LeftColor = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
+        BackgroundColor3 = Library.White;
         BorderSizePixel = 0;
         Position = UDim2.new(0, -1, 0, -1);
         Size = UDim2.new(0, 3, 1, 2);
@@ -2916,9 +3021,7 @@ function Library:Notify(Text, Time)
         Parent = NotifyOuter;
     });
 
-    Library:AddToRegistry(LeftColor, {
-        BackgroundColor3 = 'AccentColor';
-    }, true);
+    Library:AddAccentGradient(LeftColor, 90);
 
     pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize + 8 + 4, 0, YSize), 'Out', 'Quad', 0.4, true);
 
@@ -2973,24 +3076,35 @@ function Library:CreateWindow(...)
 
     Library:MakeDraggable(Outer, 25);
 
-    -- < Dunkelblauer Glow um das Fenster >
-    -- Config.Glow = false schaltet ihn ab, Library.GlowColor aendert die Farbe
+    -- < Glow + animierter Farbverlauf-Rand um das Fenster >
+    -- Config.Glow = false schaltet beides ab
+    -- Farben: Library.GlowColor / GlowColor2 (Glow), AccentColor / AccentColor2 (Rand)
     if Config.Glow ~= false then
-        local Glow = Library:Create('ImageLabel', {
-            Name = 'Glow';
-            BackgroundTransparency = 1;
-            Position = UDim2.new(0, -24, 0, -24);
-            Size = UDim2.new(1, 48, 1, 48);
-            Image = 'rbxassetid://5028857084';
-            ImageColor3 = Library.GlowColor;
-            ImageTransparency = 0.3;
-            ScaleType = Enum.ScaleType.Slice;
-            SliceCenter = Rect.new(24, 24, 276, 276);
-            ZIndex = 0;
+        Library:AddGlow(Outer, 24, 0.25, 0, 'Glow');
+
+        local Rim = Library:Create('UIStroke', {
+            Color = Library.White;
+            Thickness = 1.5;
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border;
             Parent = Outer;
         });
 
-        Library:AddToRegistry(Glow, { ImageColor3 = 'GlowColor' });
+        local RimGradient = Library:Create('UIGradient', {
+            Color = Library:GetLoopSequence();
+            Parent = Rim;
+        });
+
+        Library:AddToRegistry(RimGradient, {
+            Color = function()
+                return Library:GetLoopSequence();
+            end;
+        });
+
+        Library:GiveSignal(RenderStepped:Connect(function()
+            if Outer.Visible then
+                RimGradient.Rotation = (os.clock() * 45) % 360;
+            end;
+        end));
     end;
 
     -- < Schnee um das Fenster >
@@ -3306,16 +3420,14 @@ function Library:CreateWindow(...)
             });
 
             local Highlight = Library:Create('Frame', {
-                BackgroundColor3 = Library.AccentColor;
+                BackgroundColor3 = Library.White;
                 BorderSizePixel = 0;
                 Size = UDim2.new(1, 0, 0, 2);
                 ZIndex = 5;
                 Parent = BoxInner;
             });
 
-            Library:AddToRegistry(Highlight, {
-                BackgroundColor3 = 'AccentColor';
-            });
+            Library:AddAccentGradient(Highlight, 0);
 
             local GroupboxLabel = Library:CreateLabel({
                 Size = UDim2.new(1, 0, 0, 18);
@@ -3406,16 +3518,14 @@ function Library:CreateWindow(...)
             });
 
             local Highlight = Library:Create('Frame', {
-                BackgroundColor3 = Library.AccentColor;
+                BackgroundColor3 = Library.White;
                 BorderSizePixel = 0;
                 Size = UDim2.new(1, 0, 0, 2);
                 ZIndex = 10;
                 Parent = BoxInner;
             });
 
-            Library:AddToRegistry(Highlight, {
-                BackgroundColor3 = 'AccentColor';
-            });
+            Library:AddAccentGradient(Highlight, 0);
 
             local TabboxButtons = Library:Create('Frame', {
                 BackgroundTransparency = 1;
